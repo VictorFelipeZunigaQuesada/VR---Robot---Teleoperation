@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://ros.org/wiki/xacro">
+  
+  <!-- Incluir el gripper personalizado -->
+  <xacro:include filename="$(find gripper_description)/urdf/gripper.urdf.xacro"/>
+
+  <!-- Macro wrapper para mantener compatibilidad -->
+  <xacro:macro name="uflite_gripper_urdf" params="prefix:='' attach_to">
+    <xacro:custom_gripper prefix="${prefix}" parent="${attach_to}" />
+  </xacro:macro>
+
+</robot>

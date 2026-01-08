@@ -1,0 +1,355 @@
+
+
+#!/usr/bin/env python3
+import rclpy
+from rclpy.node import Node
+from rclpy.action import ActionClient
+
+import numpy as np
+import tf_transformations as tft
+
+from geometry_msgs.msg import Pose, PoseStamped
+from tf2_ros import Buffer, TransformListener
+
+from moveit_msgs.action import MoveGroup
+from moveit_msgs.msg import (
+    Constraints, PositionConstraint, OrientationConstraint, JointConstraint,
+    AttachedCollisionObject, PlanningScene, CollisionObject
+)
+from moveit_msgs.srv import ApplyPlanningScene
+from shape_msgs.msg import SolidPrimitive
+from sensor_msgs.msg import JointState
+
+class GraspPickAttachPlace(Node):
+    def __init__(self):
+        super().__init__('grasp_pick_attach_place')
+
+        # ---------------- CONFIG ----------------
+        self.arm_group = 'lite6'
+        self.gripper_group = 'gripper'
+        self.world_frame = 'link_base'
+        self.tcp_frame = 'tcp_link'
+
+        self.object_frame = 'detected_object_frozen'
+        self.ghost_frame = 'ghost_pose'
+        self.object_id = 'target_object'
+        self.object_dims = [0.16, 0.015, 0.21]
+
+        # ---------------- MOVEIT ----------------
+        self.move_action = ActionClient(self, MoveGroup, '/move_action')
+        self.ps_client = self.create_client(ApplyPlanningScene, '/apply_planning_scene')
+
+        # ---------------- TF ----------------
+        self.tf_buffer = Buffer()
+        self.tf_listener = TransformListener(self.tf_buffer, self)
+
+        # ---------------- SUBS ----------------
+        self.create_subscription(JointState, '/joint_states', self.cb_joint_state, 10)
+        from visualization_msgs.msg import MarkerArray
+        self.create_subscription(MarkerArray, '/detected_grasp_valid', self.cb_markers, 10)
+        
+        self.joint_state_received = False
+        self.phase = 'IDLE' 
+        self.markers = []
+        self.current_index = 0
+        self.M_OT = None 
+        self.object_in_world = False
+
+        self.get_logger().info('🦾 Nodo Pick & Place (Home por nombre + Velocidad 0.1) listo')
+
+    def cb_joint_state(self, msg):
+        if msg.name: self.joint_state_received = True
+
+    def cb_markers(self, msg):
+        if self.phase != 'IDLE' or not self.joint_state_received: return
+        self.markers = [m for m in msg.markers if m.action == 0]
+        if not self.markers: return
+        
+        if not self.object_in_world:
+            if self.add_object_to_world_from_tf(self.object_frame):
+                self.object_in_world = True
+
+        self.current_index = 0
+        self.phase = 'PICK'
+        self.try_next_pick()
+
+# ==================================================
+    # ------------------ FASE 1: PICK ------------------
+    # ==================================================
+    def try_next_pick(self):
+        if self.current_index >= len(self.markers):
+            self.get_logger().error('❌ No hay grasps alcanzables.')
+            self.phase = 'IDLE'
+            return
+
+        marker = self.markers[self.current_index]
+        
+        # 1. POSE DE AGARRE FINAL
+        self.final_pick_pose = marker.pose 
+
+        # 2. POSE DE PRE-PICK (Aproximación Vertical Pura)
+        pre_pick_pose = Pose()
+        # Forzamos X e Y a ser idénticos al objetivo para que el descenso sea vertical
+        pre_pick_pose.position.x = marker.pose.position.x
+        pre_pick_pose.position.y = marker.pose.position.y
+        # Elevamos el TCP 10cm sobre el objeto para tener margen de maniobra
+        pre_pick_pose.position.z = marker.pose.position.z + 0.10 
+        
+        # COPIAMOS la orientación exacta. Esto congela la muñeca (link_6)
+        pre_pick_pose.orientation = marker.pose.orientation
+
+        self.get_logger().info(f'➡ [PASO 1] Yendo a punto elevado sobre el objeto...')
+        
+        goal = self.build_arm_goal(pre_pick_pose)
+        # Conectamos al callback de respuesta (el que faltaba)
+        self.move_action.send_goal_async(goal).add_done_callback(self.on_pre_pick_response)
+
+    def on_pre_pick_response(self, future):
+        gh = future.result()
+        if not gh or not gh.accepted:
+            self.get_logger().warn('⚠ Pre-pick rechazado, probando otro marcador...')
+            self.current_index += 1
+            self.try_next_pick()
+            return
+        gh.get_result_async().add_done_callback(self.on_pre_pick_result)
+
+    def on_pre_pick_result(self, future):
+        if future.result().result.error_code.val == 1:
+            self.get_logger().info('✅ Alineado arriba. [PASO 2] Descendiendo linealmente...')
+            
+            # Ahora enviamos la pose final. 
+            # Como la orientación es la misma, MoveIt solo debería mover los eslabones principales para bajar.
+            goal = self.build_arm_goal(self.final_pick_pose)
+            self.move_action.send_goal_async(goal).add_done_callback(self.on_pick_response)
+        else:
+            self.get_logger().warn('❌ Error al llegar al punto elevado.')
+            self.current_index += 1
+            self.try_next_pick()
+
+    def on_pick_response(self, future):
+        gh = future.result()
+        if not gh or not gh.accepted:
+            self.get_logger().warn('⚠ Movimiento final de Pick rechazado.')
+            self.current_index += 1
+            self.try_next_pick()
+            return
+        gh.get_result_async().add_done_callback(self.on_pick_result)
+
+    def on_pick_result(self, future):
+        if future.result().result.error_code.val == 1:
+            if self.compute_and_store_M_OT():
+                input("\n👉 POSICIÓN DE AGARRE ALCANZADA. Presiona ENTER para [ATTACH + CLOSE]...")
+                self.attach_object()
+        else:
+            self.get_logger().error('❌ Falló el descenso final.')
+            self.current_index += 1
+            self.try_next_pick()
+
+                
+    def attach_object(self):
+        req = ApplyPlanningScene.Request()
+        req.scene = PlanningScene(is_diff=True)
+        aco = AttachedCollisionObject()
+        aco.link_name = self.tcp_frame
+        aco.object.id = self.object_id
+        aco.object.operation = CollisionObject.ADD
+        aco.touch_links = [self.tcp_frame, 'left_finger', 'right_finger', 'link_eef']
+        req.scene.robot_state.attached_collision_objects.append(aco)
+        
+        obj_remove = CollisionObject(id=self.object_id, operation=CollisionObject.REMOVE)
+        req.scene.world.collision_objects.append(obj_remove)
+        self.ps_client.call_async(req).add_done_callback(
+            lambda _: self.move_gripper(0.008, self.after_pick_closed)
+        )
+
+    def after_pick_closed(self, _):
+        self.get_logger().info('⬆ Elevando objeto 25cm (Retracción máxima)...')
+        lift_pose = Pose()
+        lift_pose.position.x = self.final_pick_pose.position.x
+        lift_pose.position.y = self.final_pick_pose.position.y
+        lift_pose.position.z = self.final_pick_pose.position.z + 0.25 # Subida a 25cm
+        lift_pose.orientation = self.final_pick_pose.orientation
+
+        goal = self.build_arm_goal(lift_pose)
+        self.move_action.send_goal_async(goal).add_done_callback(
+            lambda f: f.result().get_result_async().add_done_callback(self.on_lift_result)
+        )
+
+    def on_lift_result(self, future):
+        if future.result().result.error_code.val == 1:
+            input("\n✅ ELEVACIÓN OK. Presiona ENTER para ir SOBRE EL DESTINO (Pre-Place)...")
+            self.try_pre_place() # Nueva fase
+        else:
+            self.get_logger().error('❌ Falló elevación.')
+
+    def try_pre_place(self):
+        try:
+            # Obtenemos la pose final del Ghost
+            t_ghost = self.tf_buffer.lookup_transform(self.world_frame, self.ghost_frame, rclpy.time.Time())
+            m_ghost = self.tf_to_mat(t_ghost)
+            m_tcp_goal = np.dot(m_ghost, self.M_OT)
+            
+            trans = tft.translation_from_matrix(m_tcp_goal)
+            quat = tft.quaternion_from_matrix(m_tcp_goal)
+
+            # --- POSE DE PRE-PLACE (Encima del destino) ---
+            pre_p = Pose()
+            pre_p.position.x, pre_p.position.y = trans[0], trans[1]
+            # Mantenemos la altura de 25cm sobre el punto de destino para no chocar
+            pre_p.position.z = trans[2] + 0.20 
+            pre_p.orientation.x, pre_p.orientation.y, pre_p.orientation.z, pre_p.orientation.w = quat
+            
+            # Guardamos la pose final para el siguiente paso
+            self.final_place_pose = Pose()
+            self.final_place_pose.position.x, self.final_place_pose.position.y, self.final_place_pose.position.z = trans
+            self.final_place_pose.orientation = pre_p.orientation
+
+            self.get_logger().info('➡ Moviendo horizontalmente sobre el destino...')
+            goal = self.build_arm_goal(pre_p)
+            self.move_action.send_goal_async(goal).add_done_callback(
+                lambda f: f.result().get_result_async().add_done_callback(self.on_pre_place_result)
+            )
+        except Exception as e:
+            self.get_logger().error(f'❌ Error Pre-Place: {e}')
+
+    def on_pre_place_result(self, future):
+        if future.result().result.error_code.val == 1:
+            input("\n✅ SOBRE EL DESTINO. Presiona ENTER para BAJAR AL PLACE...")
+            self.get_logger().info('➡ Descendiendo verticalmente al punto final...')
+            goal = self.build_arm_goal(self.final_place_pose)
+            self.move_action.send_goal_async(goal).add_done_callback(
+                lambda f: f.result().get_result_async().add_done_callback(self.on_place_result)
+            )
+        else:
+            self.get_logger().error('❌ Falló Pre-Place.')
+# ==================================================
+    # ------------------ FASE 2: PLACE -----------------
+    # ==================================================
+    def try_place(self):
+        try:
+            t_ghost = self.tf_buffer.lookup_transform(self.world_frame, self.ghost_frame, rclpy.time.Time())
+            m_ghost = self.tf_to_mat(t_ghost)
+            m_tcp_goal = np.dot(m_ghost, self.M_OT)
+
+            trans = tft.translation_from_matrix(m_tcp_goal)
+            quat = tft.quaternion_from_matrix(m_tcp_goal)
+
+            p = Pose()
+            p.position.x, p.position.y, p.position.z = trans[0], trans[1], trans[2]
+            p.orientation.x, p.orientation.y, p.orientation.z, p.orientation.w = quat
+
+            self.get_logger().info('➡ Moviendo a PLACE (V=0.1)...')
+            goal = self.build_arm_goal(p)
+            self.move_action.send_goal_async(goal).add_done_callback(
+                lambda f: f.result().get_result_async().add_done_callback(self.on_place_result)
+            )
+        except Exception as e:
+            self.get_logger().error(f'❌ Error Place: {e}')
+
+    def on_place_result(self, future):
+        if future.result().result.error_code.val == 1:
+            input("\n👉 EN DESTINO. Presiona ENTER para ABRIR...")
+            self.move_gripper(0.000, self.after_place_opened)
+        else:
+            self.get_logger().error('❌ Falló Place.')
+
+    def after_place_opened(self, _):
+        self.detach_object()
+
+    def detach_object(self):
+        req = ApplyPlanningScene.Request()
+        req.scene = PlanningScene(is_diff=True)
+        aco = AttachedCollisionObject()
+        aco.object.id = self.object_id
+        aco.object.operation = CollisionObject.REMOVE
+        req.scene.robot_state.attached_collision_objects.append(aco)
+        self.ps_client.call_async(req).add_done_callback(self.go_home)
+
+    # ==================================================
+    # ------------------ FASE 3: HOME ------------------
+    # ==================================================
+    def go_home(self, _):
+        self.get_logger().info('🏠 Volviendo a HOME usando Named Target...')
+        self.phase = 'HOME'
+        
+        goal = MoveGroup.Goal()
+        goal.request.group_name = self.arm_group
+        goal.request.max_velocity_scaling_factor = 0.1
+        goal.request.max_acceleration_scaling_factor = 0.1
+        
+        # Simplificación: MoveIt buscará el objetivo llamado 'home' definido en el SRDF
+        # Este es el método que usa RViz internamente.
+        # Nota: Si tu pose en MoveIt se llama 'rest' o 'zero', cámbialo aquí.
+        goal.request.goal_constraints = [] # Limpiamos constraints manuales
+        
+        self.move_action.send_goal_async(goal).add_done_callback(
+            lambda f: f.result().get_result_async().add_done_callback(self.finished)
+        )
+
+    def finished(self, _):
+        self.get_logger().info('🎉 CICLO COMPLETADO. Robot en HOME.')
+        self.phase = 'DONE'
+
+    # ==================================================
+    # ------------------- HELPERS ----------------------
+    # ==================================================
+    def move_gripper(self, pos, callback):
+        goal = MoveGroup.Goal()
+        goal.request.group_name = self.gripper_group
+        goal.request.max_velocity_scaling_factor = 0.1
+        jc = JointConstraint(joint_name='left_finger_joint', position=pos, tolerance_above=0.001, tolerance_below=0.001, weight=1.0)
+        goal.request.goal_constraints.append(Constraints(joint_constraints=[jc]))
+        self.move_action.send_goal_async(goal).add_done_callback(lambda f: f.result().get_result_async().add_done_callback(callback))
+
+    def compute_and_store_M_OT(self):
+        try:
+            t_obj = self.tf_buffer.lookup_transform(self.world_frame, self.object_frame, rclpy.time.Time())
+            t_tcp = self.tf_buffer.lookup_transform(self.world_frame, self.tcp_frame, rclpy.time.Time())
+            m_wo = self.tf_to_mat(t_obj); m_wt = self.tf_to_mat(t_tcp)
+            self.M_OT = np.dot(np.linalg.inv(m_wo), m_wt)
+            return True
+        except: return False
+
+    def tf_to_mat(self, tf):
+        t = tf.transform.translation; q = tf.transform.rotation
+        return tft.concatenate_matrices(tft.translation_matrix([t.x, t.y, t.z]), tft.quaternion_matrix([q.x, q.y, q.z, q.w]))
+
+    def add_object_to_world_from_tf(self, frame: str) -> bool:
+        try:
+            T = self.tf_buffer.lookup_transform(self.world_frame, frame, rclpy.time.Time())
+            co = CollisionObject(id=self.object_id, operation=CollisionObject.ADD)
+            co.header.frame_id = self.world_frame
+            p = Pose()
+            p.position.x, p.position.y, p.position.z = T.transform.translation.x, T.transform.translation.y, T.transform.translation.z + 0.005
+            p.orientation = T.transform.rotation
+            co.primitives.append(SolidPrimitive(type=SolidPrimitive.BOX, dimensions=self.object_dims))
+            co.primitive_poses.append(p)
+            self.ps_client.call_async(ApplyPlanningScene.Request(scene=PlanningScene(is_diff=True, world=PlanningScene().world)))
+            return True
+        except: return False
+
+    def build_arm_goal(self, pose: Pose) -> MoveGroup.Goal:
+        goal = MoveGroup.Goal()
+        goal.request.group_name = self.arm_group
+        goal.request.max_velocity_scaling_factor = 0.1
+        goal.request.max_acceleration_scaling_factor = 0.1
+        goal.request.allowed_planning_time = 10.0
+        
+        pc = PositionConstraint(header=PoseStamped().header, link_name=self.tcp_frame)
+        pc.header.frame_id = self.world_frame
+        pc.constraint_region.primitives.append(SolidPrimitive(type=SolidPrimitive.BOX, dimensions=[0.02]*3))
+        pc.constraint_region.primitive_poses.append(pose)
+        
+        oc = OrientationConstraint(header=pc.header, link_name=self.tcp_frame, orientation=pose.orientation)
+        oc.absolute_x_axis_tolerance = 0.1; oc.absolute_y_axis_tolerance = 0.1; oc.absolute_z_axis_tolerance = 0.1
+        
+        goal.request.goal_constraints.append(Constraints(position_constraints=[pc], orientation_constraints=[oc]))
+        return goal
+
+def main():
+    rclpy.init()
+    node = GraspPickAttachPlace()
+    rclpy.spin(node)
+    node.destroy_node(); rclpy.shutdown()
+
+if __name__ == '__main__': main()

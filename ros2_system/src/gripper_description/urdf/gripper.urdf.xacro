@@ -1,0 +1,127 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://ros.org/wiki/xacro" name="gripper">
+
+  <!-- Macro del gripper personalizado -->
+  <xacro:macro name="custom_gripper" params="prefix:='' parent">
+  <xacro:include filename="$(find xarm_description)/urdf/common/common.material.xacro" />
+    
+    <!-- Joint que conecta el gripper al robot -->
+    <joint name="${prefix}gripper_mount" type="fixed">
+      <parent link="${parent}"/>
+      <child link="${prefix}gripper_link"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+
+    <!-- Base del gripper -->
+    <link name="${prefix}gripper_link">
+      <inertial>
+        <origin xyz="-1.81624239695673E-06 -3.06658892642899E-06 0.0255217807231195" rpy="0 0 0"/>
+        <mass value="0.17410169546863"/>
+        <inertia
+          ixx="0.000105686263715244"
+          ixy="5.39473452181203E-10"
+          ixz="3.4856317600725E-09"
+          iyy="7.69621625859741E-05"
+          iyz="8.13297040944771E-09"
+          izz="9.62918629506692E-05"/>
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://gripper_description/meshes/gripper_link.STL"/>
+        </geometry>
+        <material name="White"/>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://gripper_description/meshes/gripper_link.STL"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <!-- Dedo izquierdo -->
+    <link name="${prefix}left_finger">
+      <inertial>
+        <origin xyz="-2.21472113157592E-17 0.00246602411389386 0.0638123822759234" rpy="0 0 0"/>
+        <mass value="0.00354870670568907"/>
+        <inertia
+          ixx="2.93803216017727E-07"
+          ixy="-1.62440200048328E-23"
+          ixz="-3.1159833819704E-23"
+          iyy="3.37732538348362E-07"
+          iyz="-6.52732513510242E-08"
+          izz="1.82842137760521E-07"/>
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://gripper_description/meshes/left_finger.STL"/>
+        </geometry>
+        <material name="Black"/>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://gripper_description/meshes/left_finger.STL"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <joint name="${prefix}left_finger_joint" type="prismatic">
+      <origin xyz="0 0.0158 0" rpy="0 0 0"/>
+      <parent link="${prefix}gripper_link"/>
+      <child link="${prefix}left_finger"/>
+      <axis xyz="0 -1 0"/>
+      <limit lower="0" upper="0.0079" effort="10" velocity="0.1"/>
+    </joint>
+
+    <!-- Dedo derecho -->
+    <link name="${prefix}right_finger">
+      <inertial>
+        <origin xyz="1.41611096105971E-17 -0.00246602411389386 0.0638123822759234" rpy="0 0 0"/>
+        <mass value="0.00354870670568908"/>
+        <inertia
+          ixx="2.93803216017728E-07"
+          ixy="1.27439113170415E-22"
+          ixz="-2.78204856579578E-22"
+          iyy="3.37732538348364E-07"
+          iyz="6.52732513510245E-08"
+          izz="1.82842137760521E-07"/>
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://gripper_description/meshes/right_finger.STL"/>
+        </geometry>
+        <material name="Black"/>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://gripper_description/meshes/right_finger.STL"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <joint name="${prefix}right_finger_joint" type="prismatic">
+      <origin xyz="0 -0.0158 0" rpy="0 0 0"/>
+      <parent link="${prefix}gripper_link"/>
+      <child link="${prefix}right_finger"/>
+      <axis xyz="0 -1 0"/>
+      <limit lower="-0.0079" upper="0" effort="10" velocity="0.1"/>
+      <mimic joint="${prefix}left_finger_joint" multiplier="-1" offset="0"/>
+    </joint>
+
+  <link name="${prefix}tcp_link" />
+
+    <joint name="${prefix}tcp_joint" type="fixed">
+      <origin xyz="0 0 0.07" rpy="0 0 0"/>
+      <parent link="${prefix}gripper_link"/>
+      <child link="${prefix}tcp_link"/>
+    </joint>
+  
+  </xacro:macro>
+  
+
+</robot>
