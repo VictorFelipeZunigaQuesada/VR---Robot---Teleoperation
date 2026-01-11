@@ -1,7 +1,7 @@
 # Sistema de Teleoperación usando RV con ROS2
 
 <p align="center">
-  <img src="assets/teleoperacion.jpg" width="700">
+  <img src="assets/teleoperacion.jpeg" width="700">
 </p>
 
 
