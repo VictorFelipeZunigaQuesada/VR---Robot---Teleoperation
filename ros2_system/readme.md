@@ -1,8 +1,9 @@
 # Sistema de Teleoperación usando RV con ROS2
 
 <p align="center">
-  <img src="../assets/ros_vr_teleoperation.png" width="420">
+  <img src="assets/teleoperacion.jpg" width="700">
 </p>
+
 
 Sistema ROS 2 desarrollado para un proyecto de **teleoperación robótica mediante realidad virtual**, integrando percepción 6-DoF, planificación de movimientos y control de un manipulador desde Unity.
 
