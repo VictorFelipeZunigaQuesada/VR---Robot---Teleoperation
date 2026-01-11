@@ -7,9 +7,6 @@ Sistema robótico para la manipulación segura de objetos mediante estimación d
   <img src="assets/teleoperacion.jpeg" width="700">
 </p>
 
-
-Sistema ROS 2 desarrollado para un proyecto de **teleoperación robótica mediante realidad virtual**, integrando percepción 6-DoF, planificación de movimientos y control de un manipulador desde Unity.
-
 ---
 ## Tabla de Contenidos
 
