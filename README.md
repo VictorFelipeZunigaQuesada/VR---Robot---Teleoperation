@@ -13,7 +13,7 @@ Sistema robótico para la manipulación segura de objetos mediante estimación d
 - [Características del sistema](#características-del-sistema)
 - [Paquetes oficiales](#paquetes-oficiales)
 - [Contribuciones del proyecto](#contribuciones-del-proyecto)
-- [Notas adicionales](#notas-adicionales)
+
 ---
 
 ## Características del sistema
@@ -93,15 +93,3 @@ Funciones principales:
 
 Este paquete desacopla el control del gripper del control del brazo, facilitando su integración en flujos de Pick and Place y en esquemas de teleoperación.
 
-## Notas adicionales
-
-### Configuración de red (Cyclone DDS)
-
-El sistema ROS 2 utiliza Cyclone DDS como middleware de comunicación.  
-Para permitir la correcta transmisión de datos entre distintos equipos (por ejemplo, el equipo de visión y el equipo de control/teleoperación), es necesario configurar adecuadamente la interfaz de red en el archivo `cyclonedds.xml`.
-
-Cada usuario debe identificar la dirección IP de su propio equipo utilizando el siguiente comando:
-
-```
-hostname -I
-```
