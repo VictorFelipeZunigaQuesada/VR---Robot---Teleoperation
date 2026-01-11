@@ -66,10 +66,7 @@ Funciones principales:
 - Publicación de marcadores de visualización para RViz.
 - Integración directa con el pipeline de planificación de agarre (grasp planning).
 
-Ejemplo de ejecución:
-```
-ros2 run foundation_pose_tf pose_to_tf
-```
+
 ### gripper_description
 Paquete desarrollado en este proyecto que contiene la descripción del efector final utilizada por el sistema.
 
