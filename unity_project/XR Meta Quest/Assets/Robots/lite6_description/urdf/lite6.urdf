@@ -1,0 +1,159 @@
+<?xml version="1.0"?>
+<robot name="UF_ROBOT">
+
+  <!-- MATERIALS -->
+  <material name="Black"><color rgba="0 0 0 1"/></material>
+  <material name="Red"><color rgba="0.8 0 0 1"/></material>
+  <material name="White"><color rgba="1 1 1 1"/></material>
+  <material name="Silver"><color rgba="0.753 0.753 0.753 1"/></material>
+  <material name="Blue"><color rgba="0 0.4 0.8 1"/></material>
+
+  <!-- WORLD LINK -->
+  <link name="world"/>
+  <joint name="world_joint" type="fixed">
+    <parent link="world"/>
+    <child link="link_base"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ======================== -->
+  <!-- BASE ARM LINKS & JOINTS -->
+  <!-- ======================== -->
+
+  <link name="link_base">
+    <visual><geometry><mesh filename="meshes/visual/link_base.stl"/></geometry></visual>
+    <collision><geometry><mesh filename="meshes/collision/link_base.stl"/></geometry></collision>
+  </link>
+
+  <link name="link1">
+    <visual><geometry><mesh filename="meshes/visual/link1.stl"/></geometry></visual>
+    <collision><geometry><mesh filename="meshes/collision/link1.stl"/></geometry></collision>
+  </link>
+
+  <joint name="joint1" type="revolute">
+    <parent link="link_base"/>
+    <child link="link1"/>
+    <origin xyz="0 0 0.2435" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-6.28" upper="6.28" effort="50" velocity="3.14"/>
+  </joint>
+
+  <link name="link2">
+    <visual><geometry><mesh filename="meshes/visual/link2.stl"/></geometry></visual>
+    <collision><geometry><mesh filename="meshes/collision/link2.stl"/></geometry></collision>
+  </link>
+
+  <joint name="joint2" type="revolute">
+    <parent link="link1"/>
+    <child link="link2"/>
+    <origin xyz="0 0 0" rpy="1.5708 -1.5708 3.1416"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-2.61799" upper="2.61799" effort="50" velocity="3.14"/>
+  </joint>
+
+  <link name="link3">
+    <visual><geometry><mesh filename="meshes/visual/link3.stl"/></geometry></visual>
+    <collision><geometry><mesh filename="meshes/collision/link3.stl"/></geometry></collision>
+  </link>
+
+  <joint name="joint3" type="revolute">
+    <parent link="link2"/>
+    <child link="link3"/>
+    <origin xyz="0.2002 0 0" rpy="-3.1416 0 1.5708"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-0.061" upper="5.236" effort="32" velocity="3.14"/>
+  </joint>
+
+  <link name="link4">
+    <visual><geometry><mesh filename="meshes/visual/link4.stl"/></geometry></visual>
+    <collision><geometry><mesh filename="meshes/collision/link4.stl"/></geometry></collision>
+  </link>
+
+  <joint name="joint4" type="revolute">
+    <parent link="link3"/>
+    <child link="link4"/>
+    <origin xyz="0.087 -0.22761 0" rpy="1.5708 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-6.28" upper="6.28" effort="32" velocity="3.14"/>
+  </joint>
+
+  <link name="link5">
+    <visual><geometry><mesh filename="meshes/visual/link5.stl"/></geometry></visual>
+    <collision><geometry><mesh filename="meshes/collision/link5.stl"/></geometry></collision>
+  </link>
+
+  <joint name="joint5" type="revolute">
+    <parent link="link4"/>
+    <child link="link5"/>
+    <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-2.1642" upper="2.1642" effort="32" velocity="3.14"/>
+  </joint>
+
+  <link name="link6">
+    <visual><geometry><mesh filename="meshes/visual/link6.stl"/></geometry></visual>
+    <collision><geometry><mesh filename="meshes/collision/link6.stl"/></geometry></collision>
+  </link>
+
+  <joint name="joint6" type="revolute">
+    <parent link="link5"/>
+    <child link="link6"/>
+    <origin xyz="0 0.0625 0" rpy="-1.5708 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-6.28" upper="6.28" effort="20" velocity="3.14"/>
+  </joint>
+
+  <!-- EEF -->
+  <link name="link_eef"/>
+  <joint name="joint_eef" type="fixed">
+    <parent link="link6"/>
+    <child link="link_eef"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ==================== -->
+  <!-- GRIPPER SECTION      -->
+  <!-- ==================== -->
+
+  <!-- Gripper base -->
+  <link name="gripper_link">
+    <visual><geometry><mesh filename="meshes/visual/gripper_link.stl"/></geometry></visual>
+    <collision><geometry><mesh filename="meshes/collision/gripper_link.stl"/></geometry></collision>
+  </link>
+
+  <joint name="gripper_mount" type="fixed">
+    <parent link="link_eef"/>
+    <child link="gripper_link"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Left finger -->
+  <link name="left_finger">
+    <visual><geometry><mesh filename="meshes/visual/left_finger.stl"/></geometry></visual>
+    <collision><geometry><mesh filename="meshes/collision/left_finger.stl"/></geometry></collision>
+  </link>
+
+  <joint name="left_finger_joint" type="prismatic">
+    <parent link="gripper_link"/>
+    <child link="left_finger"/>
+    <origin xyz="0 0.0158 0" rpy="0 0 0"/>
+    <axis xyz="0 -1 0"/>
+    <limit lower="0" upper="0.0079" effort="10" velocity="0.1"/>
+  </joint>
+
+  <!-- Right finger -->
+  <link name="right_finger">
+    <visual><geometry><mesh filename="meshes/visual/right_finger.stl"/></geometry></visual>
+    <collision><geometry><mesh filename="meshes/collision/right_finger.stl"/></geometry></collision>
+  </link>
+
+  <joint name="right_finger_joint" type="prismatic">
+    <parent link="gripper_link"/>
+    <child link="right_finger"/>
+    <origin xyz="0 -0.0158 0" rpy="0 0 0"/>
+    <axis xyz="0 -1 0"/>
+    <limit lower="-0.0079" upper="0" effort="10" velocity="0.1"/>
+    <mimic joint="left_finger_joint" multiplier="-1" offset="0"/>
+  </joint>
+
+</robot>

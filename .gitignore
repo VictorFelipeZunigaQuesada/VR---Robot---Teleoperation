@@ -212,3 +212,32 @@ __marimo__/
 *.pt
 *.ckpt
 *.onnx
+
+# =========================
+# UNITY
+# =========================
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Ll]ogs/
+[Uu]serSettings/
+[Bb]uild/
+[Bb]uilds/
+
+# Unity generated files
+*.csproj
+*.sln
+*.unityproj
+*.user
+*.userprefs
+
+# Unity meta cache
+**/Library/**
+**/PackageCache/**
+
+# IDEs
+.vs/
+.vscode/
+
+# Unity crash reports
+sysinfo.txt
