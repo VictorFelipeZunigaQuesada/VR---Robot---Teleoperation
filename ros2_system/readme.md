@@ -12,9 +12,6 @@ Sistema ROS 2 desarrollado para un proyecto de **teleoperación robótica median
 - [Características del sistema](#características-del-sistema)
 - [Paquetes oficiales](#paquetes-oficiales)
 - [Contribuciones del proyecto](#contribuciones-del-proyecto)
-- [Arquitectura del sistema](#arquitectura-del-sistema)
-- [Comandos de ejecución](#comandos-de-ejecución)
-- [Notas adicionales](#notas-adicionales)
 ---
 
 ## Características del sistema
